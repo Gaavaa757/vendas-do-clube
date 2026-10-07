@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Vendas do Clube</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f6f7f4;--cd:#fff;--tx:#1b2a1f;--mu:#667;--ac:#1d6b3a;--bd:#dde3da}
+@media(prefers-color-scheme:dark){:root{--bg:#141a16;--cd:#1d261f;--tx:#e8efe9;--mu:#9ab;--ac:#4cbf78;--bd:#2d3a30}}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:16px}
+h1{font-size:22px;margin:0 0 12px}h2{font-size:16px;margin:0 0 10px}.card{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.kpi b{display:block;font-size:22px;color:var(--ac)}.kpi span,.mu{color:var(--mu);font-size:13px}
+.sc{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{padding:7px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+.bar{height:8px;background:var(--bd);border-radius:6px;min-width:70px}.bar i{display:block;height:100%;background:var(--ac);border-radius:6px}
+button,input,select{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--cd);color:var(--tx)}
+button{cursor:pointer;background:var(--ac);color:#fff;border:0}button.s{background:var(--bd);color:var(--tx)}input[type=number]{width:70px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.tag{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bd)}
+</style></head><body><main><h1>🏕️ Vendas do Clube</h1><div id="app"></div></main>
+<script>
+// ====== CONFIGURE AQUI (Supabase > Project Settings > API) ======
+const SUPABASE_URL='https://hclrwhpnsjehxvbjctpz.supabase.co', SUPABASE_KEY='sb_publishable_KcGXq_bNvjefhLDugX0NHw_akrAfLe2';
+// ================================================================
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY),app=document.getElementById('app');
+const brl=n=>(+n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const $=(t,a={},...k)=>{const e=document.createElement(t);for(const x in a)x.startsWith('on')?e[x]=a[x]:e.setAttribute(x,a[x]);k.flat().forEach(c=>e.append(c));return e};
+const fmt=d=>new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+const ok=async p=>{const r=await p;if(r.error){alert('Erro: '+r.error.message);throw r.error}return r.data};
+const token=new URLSearchParams(location.search).get('t');
+
+/* ---------- VISÃO DO MEMBRO ---------- */
+async function memberLoad(){
+  const d=await ok(sb.rpc('member_view',{p_token:token}));app.replaceChildren();
+  if(!d.member){app.append($('p',{},'Link inválido. Peça um novo ao diretor.'));return}
+  const P=Object.fromEntries(d.products.map(p=>[p.id,p])),sold={},goal={};
+  d.sales.forEach(s=>sold[s.product_id]=(sold[s.product_id]||0)+s.qty);d.goals.forEach(g=>goal[g.product_id]=g.qty);
+  const tot=d.sales.reduce((t,s)=>t+s.qty*(P[s.product_id]?.price||0),0);
+  app.append($('div',{class:'card'},$('h2',{},'Olá, '+d.member.name+'!'),$('div',{class:'kpi'},$('b',{},brl(tot)),$('span',{},'total vendido por você'))));
+  d.products.forEach(p=>{const q=sold[p.id]||0,g=goal[p.id]||0,qi=$('input',{type:'number',min:'1',value:'1'});
+    app.append($('div',{class:'card'},$('div',{class:'row'},$('b',{},p.name),$('span',{class:'mu'},brl(p.price)),$('span',{class:'tag'},q+(g?' / '+g:'')+' vendidos')),
+      g?$('div',{class:'bar'},$('i',{style:'width:'+Math.min(100,q/g*100)+'%'})):'',
+      $('div',{class:'row',style:'margin-top:10px'},qi,$('button',{onclick:async()=>{await ok(sb.rpc('member_add_sale',{p_token:token,p_product:p.id,p_qty:+qi.value}));memberLoad()}},'Registrar venda'))))});
+  const t=$('table',{},$('tr',{},...['Quando','Produto','Qtd','Valor',''].map(h=>$('th',{},h))));
+  d.sales.forEach(s=>t.append($('tr',{},$('td',{},fmt(s.created_at)),$('td',{},P[s.product_id]?.name||'?'),$('td',{},String(s.qty)),$('td',{},brl(s.qty*(P[s.product_id]?.price||0))),
+    $('td',{},$('button',{class:'s',onclick:async()=>{if(confirm('Apagar este registro?')){await ok(sb.rpc('member_del_sale',{p_token:token,p_sale:s.id}));memberLoad()}}},'✕')))));
+  app.append($('div',{class:'card'},$('h2',{},'Minhas vendas'),$('div',{class:'sc'},t)));
+}
+
+/* ---------- VISÃO DO ADMIN ---------- */
+let D={};
+async function adminLoad(){
+  const [products,members,goals,sales]=await Promise.all(['products','members','goals','sales'].map(t=>ok(sb.from(t).select('*'))).map(p=>p.catch(()=>[])));
+  D={products,members,goals,sales};adminRender();
+}
+function adminRender(){
+  const {products,members,goals,sales}=D,P=Object.fromEntries(products.map(p=>[p.id,p]));
+  const sold=(m,p)=>sales.filter(s=>s.member_id===m&&s.product_id===p).reduce((t,s)=>t+s.qty,0);
+  const goal=(m,p)=>goals.find(g=>g.member_id===m&&g.product_id===p)?.qty||0;
+  const val=m=>products.reduce((t,p)=>t+sold(m,p.id)*p.price,0),gv=m=>products.reduce((t,p)=>t+goal(m,p.id)*p.price,0);
+  const TV=members.reduce((t,m)=>t+val(m.id),0),TG=members.reduce((t,m)=>t+gv(m.id),0),TU=sales.reduce((t,s)=>t+s.qty,0);
+  app.replaceChildren($('div',{class:'row'},$('span',{class:'mu'},'Admin'),$('button',{class:'s',onclick:()=>sb.auth.signOut().then(()=>location.reload())},'Sair')),
+   $('div',{class:'card grid'},...[[brl(TV),'Total vendido'],[TU,'Unidades'],[brl(TG),'Meta total'],[TG?Math.round(TV/TG*100)+'%':'—','Meta atingida'],[members.length,'Pessoas']].map(([v,l])=>$('div',{class:'kpi'},$('b',{},String(v)),$('span',{},l)))));
+  // ranking
+  const t=$('table',{},$('tr',{},$('th',{},'Pessoa'),$('th',{},'Grupo'),...products.map(p=>$('th',{},p.name+' (vend/meta)')),$('th',{},'Total'),$('th',{},'Progresso')));
+  [...members].sort((a,b)=>val(b.id)-val(a.id)).forEach(m=>{const g=gv(m.id);
+    t.append($('tr',{},$('td',{},m.name),$('td',{},$('span',{class:'tag'},m.role)),...products.map(p=>$('td',{},sold(m.id,p.id)+' / '+goal(m.id,p.id))),$('td',{},brl(val(m.id))),$('td',{},$('div',{class:'bar'},$('i',{style:'width:'+(g?Math.min(100,val(m.id)/g*100):0)+'%'})))))});
+  app.append($('div',{class:'card'},$('h2',{},'Ranking (tempo real)'),$('div',{class:'sc'},t)));
+  // últimas vendas
+  const l=$('table',{},$('tr',{},...['Quando','Pessoa','Produto','Qtd','Valor',''].map(h=>$('th',{},h))));
+  [...sales].sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,30).forEach(s=>l.append($('tr',{},$('td',{},fmt(s.created_at)),$('td',{},members.find(m=>m.id===s.member_id)?.name||'?'),$('td',{},P[s.product_id]?.name||'?'),$('td',{},String(s.qty)),$('td',{},brl(s.qty*(P[s.product_id]?.price||0))),
+    $('td',{},$('button',{class:'s',onclick:async()=>{if(confirm('Apagar venda?')){await ok(sb.from('sales').delete().eq('id',s.id))}}},'✕')))));
+  app.append($('div',{class:'card'},$('h2',{},'Últimas vendas lançadas'),$('div',{class:'sc'},l)));
+  // produtos
+  const pn=$('input',{placeholder:'Produto'}),pp=$('input',{type:'number',step:'0.01',placeholder:'Valor R$'}),pc=$('div',{class:'card'},$('h2',{},'Produtos'),
+    $('div',{class:'row'},pn,pp,$('button',{onclick:async()=>{if(pn.value&&+pp.value>0)await ok(sb.from('products').insert({name:pn.value.trim(),price:+pp.value}))}},'Adicionar')));
+  products.forEach(p=>pc.append($('div',{class:'row'},$('span',{},p.name+' — '+brl(p.price)),$('button',{class:'s',onclick:async()=>{if(confirm('Remover produto e suas vendas?'))await ok(sb.from('products').delete().eq('id',p.id))}},'Remover'))));
+  app.append(pc);
+  // pessoas e metas
+  const mn=$('input',{placeholder:'Nome'}),mr=$('select',{},$('option',{value:'desbravador'},'Desbravador'),$('option',{value:'diretoria'},'Diretoria')),
+  mc=$('div',{class:'card'},$('h2',{},'Pessoas, links e metas (quantidade por produto)'),$('div',{class:'row'},mn,mr,$('button',{onclick:async()=>{if(mn.value)await ok(sb.from('members').insert({name:mn.value.trim(),role:mr.value}))}},'Adicionar pessoa')));
+  members.forEach(m=>{const link=location.origin+location.pathname+'?t='+m.token;mc.append($('hr'));
+    mc.append($('div',{class:'row'},$('b',{},m.name),$('span',{class:'tag'},m.role),$('button',{class:'s',onclick:()=>navigator.clipboard.writeText(link).then(()=>alert('Link copiado!'))},'Copiar link'),
+      $('button',{class:'s',onclick:async()=>{if(confirm('Remover '+m.name+' e todas as vendas?'))await ok(sb.from('members').delete().eq('id',m.id))}},'Remover')));
+    const r=$('div',{class:'row'});products.forEach(p=>{const i=$('input',{type:'number',min:'0',value:String(goal(m.id,p.id))});
+      i.onchange=()=>ok(sb.from('goals').upsert({member_id:m.id,product_id:p.id,qty:Math.max(0,+i.value||0)}));r.append($('label',{class:'mu'},p.name+' ',i))});mc.append(r)});
+  app.append(mc);
+}
+async function adminStart(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){const e=$('input',{type:'email',placeholder:'E-mail'}),p=$('input',{type:'password',placeholder:'Senha'});
+    app.append($('div',{class:'card'},$('h2',{},'Entrar (admin)'),$('div',{class:'row'},e,p,$('button',{onclick:async()=>{const {error}=await sb.auth.signInWithPassword({email:e.value,password:p.value});error?alert(error.message):location.reload()}},'Entrar'))));return}
+  await adminLoad();
+  let tm;sb.channel('all').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(tm);tm=setTimeout(adminLoad,300)}).subscribe();
+}
+token?memberLoad():adminStart();
+</script></body></html>
