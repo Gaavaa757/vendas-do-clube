@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"><title>Vendas do Clube</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 :root{--bg:#f6f7f4;--cd:#fff;--tx:#1b2a1f;--mu:#667;--ac:#1d6b3a;--bd:#dde3da}
 @media(prefers-color-scheme:dark){:root{--bg:#141a16;--cd:#1d261f;--tx:#e8efe9;--mu:#9ab;--ac:#4cbf78;--bd:#2d3a30}}
@@ -13,49 +12,62 @@ h1{font-size:22px;margin:0 0 12px}h2{font-size:16px;margin:0 0 10px}.card{backgr
 button,input,select{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--cd);color:var(--tx)}
 button{cursor:pointer;background:var(--ac);color:#fff;border:0}button.s{background:var(--bd);color:var(--tx)}input[type=number]{width:70px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.tag{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bd)}
-</style></head><body><main><h1>🏕️ Vendas do Clube</h1><div id="app"></div></main>
-<script>
-// ====== CONFIGURE AQUI (Supabase > Project Settings > API) ======
-const SUPABASE_URL='https://hclrwhpnsjehxvbjctpz.supabase.co', SUPABASE_KEY='sb_publishable_KcGXq_bNvjefhLDugX0NHw_akrAfLe2';
-// ================================================================
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY),app=document.getElementById('app');
+</style></head><body><main><h1>🏕️ Vendas do Clube</h1><div id="app"><p class="mu">Carregando…</p></div></main>
+<script type="module">
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,sendPasswordResetEmail} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getFirestore,collection,collectionGroup,doc,getDoc,addDoc,setDoc,updateDoc,deleteDoc,onSnapshot,serverTimestamp,writeBatch,getDocs,query,orderBy,deleteField} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+// ====== CONFIGURE AQUI (Firebase > Configurações do projeto > Seus apps > Config) ======
+const firebaseConfig={apiKey:'AIzaSyA1ambasThG3l5E8sr8MOWg_w8BR44yxIc',authDomain:'vendas-do-clube.firebaseapp.com',projectId:'vendas-do-clube',appId:'1:982243284562:web:2696e22ec17cb439be318b'};
+// =======================================================================================
+const fb=initializeApp(firebaseConfig),auth=getAuth(fb),db=getFirestore(fb),app=document.getElementById('app');
 const brl=n=>(+n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const $=(t,a={},...k)=>{const e=document.createElement(t);for(const x in a)x.startsWith('on')?e[x]=a[x]:e.setAttribute(x,a[x]);k.flat().forEach(c=>e.append(c));return e};
-const fmt=d=>new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-const ok=async p=>{const r=await p;if(r.error){alert('Erro: '+r.error.message);throw r.error}return r.data};
+const ts=s=>s.createdAt?.toDate?.()||new Date();
+const fmt=d=>d.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+const ok=async p=>{try{return await p}catch(e){alert('Erro: '+e.message);throw e}};
 const token=new URLSearchParams(location.search).get('t');
 
-/* ---------- VISÃO DO MEMBRO ---------- */
-async function memberLoad(){
-  const d=await ok(sb.rpc('member_view',{p_token:token}));app.replaceChildren();
-  if(!d.member){app.append($('p',{},'Link inválido. Peça um novo ao diretor.'));return}
-  const P=Object.fromEntries(d.products.map(p=>[p.id,p])),sold={},goal={};
-  d.sales.forEach(s=>sold[s.product_id]=(sold[s.product_id]||0)+s.qty);d.goals.forEach(g=>goal[g.product_id]=g.qty);
-  const tot=d.sales.reduce((t,s)=>t+s.qty*(P[s.product_id]?.price||0),0);
-  app.append($('div',{class:'card'},$('h2',{},'Olá, '+d.member.name+'!'),$('div',{class:'kpi'},$('b',{},brl(tot)),$('span',{},'total vendido por você'))));
-  d.products.forEach(p=>{const q=sold[p.id]||0,g=goal[p.id]||0,qi=$('input',{type:'number',min:'1',value:'1'});
-    app.append($('div',{class:'card'},$('div',{class:'row'},$('b',{},p.name),$('span',{class:'mu'},brl(p.price)),$('span',{class:'tag'},q+(g?' / '+g:'')+' vendidos')),
-      g?$('div',{class:'bar'},$('i',{style:'width:'+Math.min(100,q/g*100)+'%'})):'',
-      $('div',{class:'row',style:'margin-top:10px'},qi,$('button',{onclick:async()=>{await ok(sb.rpc('member_add_sale',{p_token:token,p_product:p.id,p_qty:+qi.value}));memberLoad()}},'Registrar venda'))))});
-  const t=$('table',{},$('tr',{},...['Quando','Produto','Qtd','Valor',''].map(h=>$('th',{},h))));
-  d.sales.forEach(s=>t.append($('tr',{},$('td',{},fmt(s.created_at)),$('td',{},P[s.product_id]?.name||'?'),$('td',{},String(s.qty)),$('td',{},brl(s.qty*(P[s.product_id]?.price||0))),
-    $('td',{},$('button',{class:'s',onclick:async()=>{if(confirm('Apagar este registro?')){await ok(sb.rpc('member_del_sale',{p_token:token,p_sale:s.id}));memberLoad()}}},'✕')))));
-  app.append($('div',{class:'card'},$('h2',{},'Minhas vendas'),$('div',{class:'sc'},t)));
+/* ---------- VISÃO DO MEMBRO (link pessoal ?t=ID) ---------- */
+async function memberStart(){
+  const mref=doc(db,'members',token);let M,products=[],sales=[];
+  try{const s=await getDoc(mref);if(!s.exists())throw 0;M=s.data()}catch{app.replaceChildren($('p',{},'Link inválido. Peça um novo ao diretor.'));return}
+  const render=()=>{
+    const P=Object.fromEntries(products.map(p=>[p.id,p])),sold={},goal=M.goals||{};
+    sales.forEach(s=>sold[s.productId]=(sold[s.productId]||0)+s.qty);
+    const tot=sales.reduce((t,s)=>t+s.qty*(P[s.productId]?.price||0),0);
+    app.replaceChildren($('div',{class:'card'},$('h2',{},'Olá, '+M.name+'!'),$('div',{class:'kpi'},$('b',{},brl(tot)),$('span',{},'total vendido por você'))));
+    products.forEach(p=>{const q=sold[p.id]||0,g=goal[p.id]||0,qi=$('input',{type:'number',min:'1',value:'1'});
+      app.append($('div',{class:'card'},$('div',{class:'row'},$('b',{},p.name),$('span',{class:'mu'},brl(p.price)),$('span',{class:'tag'},q+(g?' / '+g:'')+' vendidos')),
+        g?$('div',{class:'bar'},$('i',{style:'width:'+Math.min(100,q/g*100)+'%'})):'',
+        $('div',{class:'row',style:'margin-top:10px'},qi,$('button',{onclick:async()=>{const n=Math.floor(+qi.value);if(n<1||n>1000)return alert('Quantidade inválida');
+          await ok(addDoc(collection(mref,'sales'),{productId:p.id,qty:n,createdAt:serverTimestamp()}))}},'Registrar venda'))))});
+    const t=$('table',{},$('tr',{},...['Quando','Produto','Qtd','Valor',''].map(h=>$('th',{},h))));
+    sales.forEach(s=>t.append($('tr',{},$('td',{},fmt(ts(s))),$('td',{},P[s.productId]?.name||'?'),$('td',{},String(s.qty)),$('td',{},brl(s.qty*(P[s.productId]?.price||0))),
+      $('td',{},$('button',{class:'s',onclick:async()=>{if(confirm('Apagar este registro?'))await ok(deleteDoc(doc(mref,'sales',s.id)))}},'✕')))));
+    app.append($('div',{class:'card'},$('h2',{},'Minhas vendas'),$('div',{class:'sc'},t)));
+  };
+  onSnapshot(mref,s=>{if(s.exists()){M=s.data();render()}});
+  onSnapshot(query(collection(db,'products'),orderBy('name')),s=>{products=s.docs.map(d=>({id:d.id,...d.data()}));render()});
+  onSnapshot(query(collection(mref,'sales'),orderBy('createdAt','desc')),s=>{sales=s.docs.map(d=>({id:d.id,...d.data()}));render()});
 }
 
 /* ---------- VISÃO DO ADMIN ---------- */
-let D={};
-async function adminLoad(){
-  const [products,members,goals,sales]=await Promise.all(['products','members','goals','sales'].map(t=>ok(sb.from(t).select('*'))).map(p=>p.catch(()=>[])));
-  D={products,members,goals,sales};adminRender();
+const D={products:[],members:[],sales:[]};let tm;const later=()=>{clearTimeout(tm);tm=setTimeout(adminRender,150)};
+function adminListen(){
+  onSnapshot(collection(db,'products'),s=>{D.products=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));later()},e=>alert(e.message));
+  onSnapshot(collection(db,'members'),s=>{D.members=s.docs.map(d=>({id:d.id,...d.data()}));later()},e=>alert(e.message));
+  onSnapshot(collectionGroup(db,'sales'),s=>{D.sales=s.docs.map(d=>({id:d.id,ref:d.ref,memberId:d.ref.parent.parent.id,...d.data()}));later()},e=>alert(e.message));
 }
+async function delSales(f){const b=D.sales.filter(f);for(let i=0;i<b.length;i+=400){const w=writeBatch(db);b.slice(i,i+400).forEach(s=>w.delete(s.ref));await w.commit()}}
 function adminRender(){
-  const {products,members,goals,sales}=D,P=Object.fromEntries(products.map(p=>[p.id,p]));
-  const sold=(m,p)=>sales.filter(s=>s.member_id===m&&s.product_id===p).reduce((t,s)=>t+s.qty,0);
-  const goal=(m,p)=>goals.find(g=>g.member_id===m&&g.product_id===p)?.qty||0;
+  const {products,members,sales}=D,P=Object.fromEntries(products.map(p=>[p.id,p]));
+  const sold=(m,p)=>sales.filter(s=>s.memberId===m&&s.productId===p).reduce((t,s)=>t+s.qty,0);
+  const goal=(m,p)=>members.find(x=>x.id===m)?.goals?.[p]||0;
   const val=m=>products.reduce((t,p)=>t+sold(m,p.id)*p.price,0),gv=m=>products.reduce((t,p)=>t+goal(m,p.id)*p.price,0);
   const TV=members.reduce((t,m)=>t+val(m.id),0),TG=members.reduce((t,m)=>t+gv(m.id),0),TU=sales.reduce((t,s)=>t+s.qty,0);
-  app.replaceChildren($('div',{class:'row'},$('span',{class:'mu'},'Admin'),$('button',{class:'s',onclick:()=>sb.auth.signOut().then(()=>location.reload())},'Sair')),
+  app.replaceChildren($('div',{class:'row'},$('span',{class:'mu'},'Admin: '+auth.currentUser.email),$('button',{class:'s',onclick:()=>signOut(auth).then(()=>location.reload())},'Sair')),
    $('div',{class:'card grid'},...[[brl(TV),'Total vendido'],[TU,'Unidades'],[brl(TG),'Meta total'],[TG?Math.round(TV/TG*100)+'%':'—','Meta atingida'],[members.length,'Pessoas']].map(([v,l])=>$('div',{class:'kpi'},$('b',{},String(v)),$('span',{},l)))));
   // ranking
   const t=$('table',{},$('tr',{},$('th',{},'Pessoa'),$('th',{},'Grupo'),...products.map(p=>$('th',{},p.name+' (vend/meta)')),$('th',{},'Total'),$('th',{},'Progresso')));
@@ -64,30 +76,30 @@ function adminRender(){
   app.append($('div',{class:'card'},$('h2',{},'Ranking (tempo real)'),$('div',{class:'sc'},t)));
   // últimas vendas
   const l=$('table',{},$('tr',{},...['Quando','Pessoa','Produto','Qtd','Valor',''].map(h=>$('th',{},h))));
-  [...sales].sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,30).forEach(s=>l.append($('tr',{},$('td',{},fmt(s.created_at)),$('td',{},members.find(m=>m.id===s.member_id)?.name||'?'),$('td',{},P[s.product_id]?.name||'?'),$('td',{},String(s.qty)),$('td',{},brl(s.qty*(P[s.product_id]?.price||0))),
-    $('td',{},$('button',{class:'s',onclick:async()=>{if(confirm('Apagar venda?')){await ok(sb.from('sales').delete().eq('id',s.id))}}},'✕')))));
+  [...sales].sort((a,b)=>ts(b)-ts(a)).slice(0,30).forEach(s=>l.append($('tr',{},$('td',{},fmt(ts(s))),$('td',{},members.find(m=>m.id===s.memberId)?.name||'?'),$('td',{},P[s.productId]?.name||'?'),$('td',{},String(s.qty)),$('td',{},brl(s.qty*(P[s.productId]?.price||0))),
+    $('td',{},$('button',{class:'s',onclick:async()=>{if(confirm('Apagar venda?'))await ok(deleteDoc(s.ref))}},'✕')))));
   app.append($('div',{class:'card'},$('h2',{},'Últimas vendas lançadas'),$('div',{class:'sc'},l)));
   // produtos
   const pn=$('input',{placeholder:'Produto'}),pp=$('input',{type:'number',step:'0.01',placeholder:'Valor R$'}),pc=$('div',{class:'card'},$('h2',{},'Produtos'),
-    $('div',{class:'row'},pn,pp,$('button',{onclick:async()=>{if(pn.value&&+pp.value>0)await ok(sb.from('products').insert({name:pn.value.trim(),price:+pp.value}))}},'Adicionar')));
-  products.forEach(p=>pc.append($('div',{class:'row'},$('span',{},p.name+' — '+brl(p.price)),$('button',{class:'s',onclick:async()=>{if(confirm('Remover produto e suas vendas?'))await ok(sb.from('products').delete().eq('id',p.id))}},'Remover'))));
+    $('div',{class:'row'},pn,pp,$('button',{onclick:async()=>{if(pn.value.trim()&&+pp.value>0)await ok(addDoc(collection(db,'products'),{name:pn.value.trim(),price:+pp.value}))}},'Adicionar')));
+  products.forEach(p=>pc.append($('div',{class:'row'},$('span',{},p.name+' — '+brl(p.price)),$('button',{class:'s',onclick:async()=>{if(confirm('Remover produto e suas vendas?')){await ok(delSales(s=>s.productId===p.id));await ok(deleteDoc(doc(db,'products',p.id)))}}},'Remover'))));
   app.append(pc);
   // pessoas e metas
   const mn=$('input',{placeholder:'Nome'}),mr=$('select',{},$('option',{value:'desbravador'},'Desbravador'),$('option',{value:'diretoria'},'Diretoria')),
-  mc=$('div',{class:'card'},$('h2',{},'Pessoas, links e metas (quantidade por produto)'),$('div',{class:'row'},mn,mr,$('button',{onclick:async()=>{if(mn.value)await ok(sb.from('members').insert({name:mn.value.trim(),role:mr.value}))}},'Adicionar pessoa')));
-  members.forEach(m=>{const link=location.origin+location.pathname+'?t='+m.token;mc.append($('hr'));
+  mc=$('div',{class:'card'},$('h2',{},'Pessoas, links e metas (quantidade por produto)'),$('div',{class:'row'},mn,mr,$('button',{onclick:async()=>{if(mn.value.trim())await ok(addDoc(collection(db,'members'),{name:mn.value.trim(),role:mr.value,goals:{}}))}},'Adicionar pessoa')));
+  [...members].sort((a,b)=>a.name.localeCompare(b.name)).forEach(m=>{const link=location.origin+location.pathname+'?t='+m.id;mc.append($('hr'));
     mc.append($('div',{class:'row'},$('b',{},m.name),$('span',{class:'tag'},m.role),$('button',{class:'s',onclick:()=>navigator.clipboard.writeText(link).then(()=>alert('Link copiado!'))},'Copiar link'),
-      $('button',{class:'s',onclick:async()=>{if(confirm('Remover '+m.name+' e todas as vendas?'))await ok(sb.from('members').delete().eq('id',m.id))}},'Remover')));
+      $('button',{class:'s',onclick:async()=>{if(confirm('Remover '+m.name+' e todas as vendas?')){await ok(delSales(s=>s.memberId===m.id));await ok(deleteDoc(doc(db,'members',m.id)))}}},'Remover')));
     const r=$('div',{class:'row'});products.forEach(p=>{const i=$('input',{type:'number',min:'0',value:String(goal(m.id,p.id))});
-      i.onchange=()=>ok(sb.from('goals').upsert({member_id:m.id,product_id:p.id,qty:Math.max(0,+i.value||0)}));r.append($('label',{class:'mu'},p.name+' ',i))});mc.append(r)});
+      i.onchange=()=>{const q=Math.max(0,Math.floor(+i.value)||0);ok(updateDoc(doc(db,'members',m.id),{['goals.'+p.id]:q||deleteField()}))};r.append($('label',{class:'mu'},p.name+' ',i))});mc.append(r)});
   app.append(mc);
 }
-async function adminStart(){
-  const {data:{session}}=await sb.auth.getSession();
-  if(!session){const e=$('input',{type:'email',placeholder:'E-mail'}),p=$('input',{type:'password',placeholder:'Senha'});
-    app.append($('div',{class:'card'},$('h2',{},'Entrar (admin)'),$('div',{class:'row'},e,p,$('button',{onclick:async()=>{const {error}=await sb.auth.signInWithPassword({email:e.value,password:p.value});error?alert(error.message):location.reload()}},'Entrar'))));return}
-  await adminLoad();
-  let tm;sb.channel('all').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(tm);tm=setTimeout(adminLoad,300)}).subscribe();
+function loginForm(){
+  const e=$('input',{type:'email',placeholder:'E-mail'}),p=$('input',{type:'password',placeholder:'Senha'});
+  app.replaceChildren($('div',{class:'card'},$('h2',{},'Entrar (admin)'),$('div',{class:'row'},e,p,
+    $('button',{onclick:()=>signInWithEmailAndPassword(auth,e.value,p.value).catch(x=>alert('Não foi possível entrar: '+x.code))},'Entrar'),
+    $('button',{class:'s',onclick:()=>e.value?sendPasswordResetEmail(auth,e.value).then(()=>alert('E-mail para criar/trocar senha enviado.')).catch(x=>alert(x.code)):alert('Digite o e-mail')},'Esqueci a senha'))));
 }
-token?memberLoad():adminStart();
+if(token)memberStart();
+else{let started=false;onAuthStateChanged(auth,u=>{if(!u)return loginForm();if(!started){started=true;app.replaceChildren($('p',{class:'mu'},'Carregando…'));adminListen()}})}
 </script></body></html>
